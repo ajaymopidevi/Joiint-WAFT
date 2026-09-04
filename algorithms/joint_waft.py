@@ -27,6 +27,7 @@ class JointWAFT(nn.Module):
         self.task = cfg.WAFT.ITERATIVE_MODULE.TASK if hasattr(cfg.WAFT, 'ITERATIVE_MODULE') else ['delta']*8
         self.iters = len(self.task)
         self.n_bins = int(cfg.WAFT.LOSS[0].split('_')[-1]) + 1 if hasattr(cfg.WAFT, 'LOSS') else 64
+        self.grad_checkpointing = getattr(cfg.SOLVER, 'GRADIENT_CHECKPOINTING', False) if hasattr(cfg, 'SOLVER') else False
         
         # 1. Shared Feature Encoder
         self.encoder, self.enc_dim, self.factor = fetch_feature_encoder(cfg.WAFT.FEATURE_ENCODER)
@@ -129,7 +130,10 @@ class JointWAFT(nn.Module):
         idx_bins_1x = torch.linspace(0, self.max_disp / 1, self.n_bins, device=fmap_L_t.device, dtype=fmap_L_t.dtype).view(1, self.n_bins, 1, 1)
 
         prop_hidden = self.prop_proj(torch.cat([fmap_L_t_disp, fmap_R_t_disp], dim=1))
-        prop_hidden = self.prop_decoder(prop_hidden)
+        if self.training and self.grad_checkpointing:
+            prop_hidden = torch.utils.checkpoint.checkpoint(self.prop_decoder, prop_hidden, use_reentrant=False)
+        else:
+            prop_hidden = self.prop_decoder(prop_hidden)
         prob_mask = 0.25 * self.prop_mask_head(prop_hidden)
         prob_bins = self.prop_bins_head(prop_hidden)
         prob_up = self.convex_upsample(prob_bins, prob_mask)
@@ -171,7 +175,10 @@ class JointWAFT(nn.Module):
             warped_fmap_R_disp = disp_warp(fmap_R_t_disp, disp, padding_mode='zeros')
             disp_inp = torch.cat([fmap_L_t_disp, warped_fmap_R_disp, net_disp, disp, flow], dim=1)
             net_disp = self.disp_proj(disp_inp)
-            net_disp = self.disp_decoder(net_disp)
+            if self.training and self.grad_checkpointing:
+                net_disp = torch.utils.checkpoint.checkpoint(self.disp_decoder, net_disp, use_reentrant=False)
+            else:
+                net_disp = self.disp_decoder(net_disp)
             
             delta_disp = self.delta_disp_head(net_disp)
             disp_info = self.disp_dist_head(net_disp)
@@ -187,7 +194,10 @@ class JointWAFT(nn.Module):
             warped_fmap_L_flow = flow_warp(fmap_L_t1_flow, flow, padding_mode='zeros')
             flow_inp = torch.cat([fmap_L_t_flow, warped_fmap_L_flow, net_flow, flow, disp], dim=1)
             net_flow = self.flow_proj(flow_inp)
-            net_flow = self.flow_decoder(net_flow)
+            if self.training and self.grad_checkpointing:
+                net_flow = torch.utils.checkpoint.checkpoint(self.flow_decoder, net_flow, use_reentrant=False)
+            else:
+                net_flow = self.flow_decoder(net_flow)
 
             delta_flow = self.delta_flow_head(net_flow)
             flow_info = self.flow_dist_head(net_flow)

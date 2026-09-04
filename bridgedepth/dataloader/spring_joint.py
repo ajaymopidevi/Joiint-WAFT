@@ -8,8 +8,9 @@ import torch.utils.data as data
 from PIL import Image
 
 from ..utils import frame_utils, misc
+from .base.easy_dataset import EasyDataset
 
-class SpringJointDataset(data.Dataset):
+class SpringJointDataset(EasyDataset, data.Dataset):
     """
     Spring Dataset for Joint Stereo Disparity and Optical Flow Training.
     Returns:

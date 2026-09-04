@@ -4,6 +4,7 @@ import argparse
 import sys
 import json
 import wandb
+import contextlib
 
 import torch
 import copy
@@ -142,8 +143,11 @@ def main(args):
 
     total_steps = 0
     epoch = 0
-    logger.info('Start training Joint-WAFT')
+    accum_steps = getattr(cfg.SOLVER, 'GRAD_ACCUM_STEPS', 1)
+    logger.info(f'Start training Joint-WAFT (Gradient Accumulation Steps: {accum_steps})')
     avg_dict = {}
+
+    optimizer.zero_grad(set_to_none=True)
 
     while total_steps < cfg.SOLVER.MAX_ITER:
         model.train()
@@ -152,19 +156,25 @@ def main(args):
 
         for i_batch, sample in enumerate(train_loader):
             sample = {k: v.to(torch.device("cuda")) if isinstance(v, torch.Tensor) else v for k, v in sample.items()}
+            
+            is_accumulating = ((i_batch + 1) % accum_steps != 0) and ((i_batch + 1) != len(train_loader))
+            context_mgr = model.no_sync() if (comm.get_world_size() > 1 and is_accumulating) else contextlib.nullcontext()
 
-            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=cfg.SOLVER.MIX_PRECISION):
-                result_dict = model(sample)
-                loss_dict, metrics = criterion(result_dict, sample, log=True)
-                losses = loss_dict['total_loss']
+            with context_mgr:
+                with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=cfg.SOLVER.MIX_PRECISION):
+                    result_dict = model(sample)
+                    loss_dict, metrics = criterion(result_dict, sample, log=True)
+                    losses = loss_dict['total_loss']
+                    scaled_loss = losses / accum_steps
 
-            for param in model_without_ddp.parameters():
-                param.grad = None
+                scaled_loss.backward()
 
-            losses.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.SOLVER.GRAD_CLIP)
-            optimizer.step()
-            lr_scheduler.step()
+            if not is_accumulating:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.SOLVER.GRAD_CLIP)
+                optimizer.step()
+                optimizer.zero_grad(set_to_none=True)
+                lr_scheduler.step()
+                total_steps += 1
 
             # Record metrics
             if comm.is_main_process():
@@ -181,10 +191,8 @@ def main(args):
                     meter.update(val)
                     avg_dict[k] = meter
 
-            total_steps += 1
-
             # Log to TensorBoard and Console periodically
-            if total_steps % 20 == 0 and comm.is_main_process():
+            if not is_accumulating and total_steps % 20 == 0 and comm.is_main_process():
                 logger.info(f"Step [{total_steps}/{cfg.SOLVER.MAX_ITER}] Loss: {losses.item():.4f} LR: {curr_lr:.6f}")
                 if tb_writer is not None:
                     tb_writer.add_scalar("train/lr", curr_lr, total_steps)
