@@ -12,6 +12,8 @@ from typing import Iterable, Optional, TypeVar, List, Tuple, Union
 from functools import partial
 from ..utils import frame_utils, misc, dist_utils as comm
 from .transforms import FlowAugmentor, SparseFlowAugmentor
+from .joint_transforms import JointStereoFlowAugmentor
+from .spring_joint import SpringJointDataset
 from .base.easy_dataset import EasyDataset
 from .sampler import InferenceSampler
 
@@ -603,9 +605,19 @@ def build_train_loader(cfg):
         elif dataset_name == 'fsd':
             new_dataset = FSD(aug_params)
             logger.info(f"{len(new_dataset)} samples from FSD")
+        elif dataset_name == 'spring_joint':
+            joint_aug = JointStereoFlowAugmentor(
+                crop_size=list(crop_size),
+                min_scale=spatial_scale[0],
+                max_scale=spatial_scale[1],
+                saturation_range=cfg.DATASETS.SATURATION_RANGE if cfg.DATASETS.SATURATION_RANGE is not None else [0.6, 1.4],
+                gamma=cfg.DATASETS.IMG_GAMMA if cfg.DATASETS.IMG_GAMMA is not None else [1, 1, 1, 1]
+            )
+            new_dataset = SpringJointDataset(aug_params=joint_aug, split='train')
+            logger.info(f"{len(new_dataset)} samples from Spring (Joint Stereo + Flow)")
         elif dataset_name == 'spring':
             new_dataset = Spring(aug_params)
-            logger.info(f"{len(new_dataset)} samples from Spring")
+            logger.info(f"{len(new_dataset)} samples from Spring (Stereo Only)")
         elif dataset_name == 'tartanground':
             new_dataset = TartanGround(aug_params)
             logger.info(f"{len(new_dataset)} samples from TartanGround")
@@ -671,6 +683,12 @@ def build_val_loader(cfg, dataset_name):
         final_dataset = SceneFlowDatasets(dstype='frames_finalpass')
         clean_dataset = SceneFlowDatasets(dstype='frames_cleanpass')
         val_dataset = final_dataset + clean_dataset
+        logger.info('Number of validation image pairs: %d' % len(val_dataset))
+    elif dataset_name == 'spring_joint':
+        val_dataset = SpringJointDataset(split='val')
+        logger.info('Number of validation image sequences: %d' % len(val_dataset))
+    elif dataset_name == 'spring':
+        val_dataset = Spring(split='val')
         logger.info('Number of validation image pairs: %d' % len(val_dataset))
     elif dataset_name == 'booster':
         val_dataset = Booster(resolution='Q')

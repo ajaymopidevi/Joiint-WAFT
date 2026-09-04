@@ -1,0 +1,51 @@
+_BASE_: "base.yaml"
+
+ALGORITHM: "joint_waft"
+
+WAFT:
+  MAX_DISP: 192
+  LOSS: ["mixlap_64"]
+  FEATURE_ENCODER:
+    TYPE: "dav2"
+    ARCH: "vits"
+    LORA_RANK: 8
+    LORA_ALPHA: 16
+  ITERATIVE_MODULE:
+    TASK: ['delta', 'delta', 'delta', 'delta', 'delta', 'delta', 'delta', 'delta']
+    PROP_ITER:
+      TYPE: "vit"
+      ARCH: "vits"
+      LORA_RANK: 8
+      LORA_ALPHA: 16
+      PATCH_SIZE: 8
+    DELTA_ITER:
+      TYPE: "vit"
+      ARCH: "vits"
+      LORA_RANK: 8
+      LORA_ALPHA: 16
+      PATCH_SIZE: 8
+
+JOINT:
+  DISP_WEIGHT: 1.0
+  FLOW_WEIGHT: 1.0
+  CYCLE_WEIGHT: 0.1
+  NUM_ITERS: 8
+
+DATASETS:
+  TRAIN: ["spring_joint"]
+  MUL: [1]
+  TEST: ["spring_joint"]
+  CROP_SIZE: [368, 784]
+  SPATIAL_SCALE: [-0.2, 0.4]
+  SATURATION_RANGE: [0.6, 1.4]
+  IMG_GAMMA: [0.8, 1.2, 1.0, 1.0]
+
+DATALOADER:
+  NUM_WORKERS: 4
+
+SOLVER:
+  BASE_LR: 0.0004
+  IMS_PER_BATCH: 4
+  MAX_ITER: 200000
+  MIX_PRECISION: True
+  CHECKPOINT_PERIOD: 10000

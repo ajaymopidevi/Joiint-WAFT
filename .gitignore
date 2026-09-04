@@ -1,0 +1,31 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Checkpoints & model weights
+ckpts/
+*.pth
+*.pt
+depth-anything-ckpts/
+*.ckpt
+
+# Datasets & Data
+datasets/
+data/
+*.h5
+*.flo5
+*.dsp5
+
+# Logs & Monitoring
+*.log
+tb_logs/
+wandb/
+
+# Environments & IDEs
+.venv/
+env/
+venv/
+.vscode/
+.idea/
+*.swp

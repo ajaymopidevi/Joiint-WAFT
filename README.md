@@ -23,15 +23,30 @@ cd Joint-WAFT
 python test_joint.py
 ```
 
-### Train on Multi-View Dataset with Monitoring
+### Training on Spring Dataset (Joint Stereo Disparity + Optical Flow)
+
+To train on the Spring benchmark with simultaneous optical flow and disparity supervision:
+
 ```bash
-python main.py --config-file configs/joint_waft.yaml --num-gpus 4
+python main.py --config-file configs/joint_spring.yaml --num-gpus 4
+```
+
+Dataset structure expected under `datasets/spring/` or symlinked:
+```
+datasets/spring/
+  ├── train/
+  │   └── <scene_name>/
+  │       ├── frame_left/        # frame_left_XXXX.png
+  │       ├── frame_right/       # frame_right_XXXX.png
+  │       ├── disp1_left/        # disp1_left_XXXX.dsp5
+  │       └── flow_FW_left/      # flow_FW_left_XXXX.flo5
+  └── val/
 ```
 
 ### Experiment Monitoring
 
 #### 1. TensorBoard (Default)
-TensorBoard event logs are automatically saved under the checkpoint directory (e.g. `ckpts/joint_waft/joint_waft/42/tb_logs`) or custom directory via `--tb-dir`:
+TensorBoard event logs are automatically saved under the checkpoint directory (e.g. `ckpts/joint_waft/joint_spring/42/tb_logs`) or custom directory via `--tb-dir`:
 
 ```bash
 tensorboard --logdir ckpts/joint_waft/
@@ -48,5 +63,5 @@ Logged metrics include:
 #### 2. Weights & Biases (Optional)
 To log to WandB in addition to TensorBoard:
 ```bash
-python main.py --config-file configs/joint_waft.yaml --num-gpus 4 --use-wandb
+python main.py --config-file configs/joint_spring.yaml --num-gpus 4 --use-wandb
 ```

@@ -14,11 +14,6 @@ cv2.ocl.setUseOpenCL(False)
 
 def readFlow(fn):
     """ Read .flo file in Middlebury format"""
-    # Code adapted from:
-    # http://stackoverflow.com/questions/28013200/reading-middlebury-flow-files-with-python-bytes-array-numpy
-
-    # WARNING: this will work on little-endian architectures (eg Intel x86) only!
-    # print 'fn = %s'%(fn)
     with open(fn, 'rb') as f:
         magic = np.fromfile(f, np.float32, count=1)
         if 202021.25 != magic:
@@ -27,15 +22,11 @@ def readFlow(fn):
         else:
             w = np.fromfile(f, np.int32, count=1)
             h = np.fromfile(f, np.int32, count=1)
-            # print 'Reading %d x %d flo file\n' % (w, h)
             data = np.fromfile(f, np.float32, count=2 * int(w) * int(h))
-            # Reshape data into 3D array (columns, rows, bands)
-            # The reshape here is for visualization, the original code is (w,h,2)
             return np.resize(data, (int(h), int(w), 2))
 
 def readPFM(file):
     file = open(file, 'rb')
-
     color = None
     width = None
     height = None
@@ -65,11 +56,9 @@ def readPFM(file):
 
     data = np.fromfile(file, endian + 'f')
     shape = (height, width, 3) if color else (height, width)
-
     data = np.reshape(data, shape)
     data = np.flipud(data)
     return data
-
 
 def writePFM(file, array):
     import os
@@ -82,7 +71,6 @@ def writePFM(file, array):
             f.write(str.encode(header))
         array = np.flip(array, axis=0).astype(np.float32)
         f.write(array.tobytes())
-        
 
 def readDispKITTI(filename):
     disp = cv2.imread(filename, cv2.IMREAD_ANYDEPTH) / 256.0
@@ -102,91 +90,37 @@ def readDispETH3D(file_name, nonocc=False):
         valid = (disp > 0.0) & (disp < 1e3)
     return disp, valid
 
-
 def readDispMiddlebury(file_name, nonocc=False):
-    if basename(file_name) == 'disp0GT.pfm':
-        disp = readPFM(file_name).astype(np.float32)
-        assert len(disp.shape) == 2
-        if nonocc:
-            nocc_pix = file_name.replace('disp0GT.pfm', 'mask0nocc.png')
-            assert exists(nocc_pix)
-            nocc_pix = imageio.imread(nocc_pix) == 255
-            assert np.any(nocc_pix)
-            valid = nocc_pix & (disp > 0.0) & (disp < 1e3)
-        else:
-            valid = (disp > 0.0) & (disp < 1e3)
-        return disp, valid
-    elif basename(file_name) == 'disp0.pfm':
-        disp = readPFM(file_name).astype(np.float32)
+    disp = readPFM(file_name).astype(np.float32)
+    assert len(disp.shape) == 2
+    if nonocc:
+        nocc_pix = file_name.replace('disp0GT.pfm', 'mask0nocc.png')
+        assert exists(nocc_pix)
+        nocc_pix = imageio.imread(nocc_pix) == 255
+        assert np.any(nocc_pix)
+        valid = nocc_pix & (disp > 0.0) & (disp < 1e3)
+    else:
         valid = (disp > 0.0) & (disp < 1e3)
-        return disp, valid
-    elif splitext(file_name)[-1] == '.png':
-        disp = np.array(Image.open(file_name)).astype(np.float32)
-        valid = (disp > 0.0) & (disp < 1e3)
-        return disp, valid
-    
-
-def writeDispKITTI(filename, disp):
-    disp = np.round(disp * 256).astype(np.uint16)
-    cv2.imwrite(filename, disp)
-    
-    
-def readDispVKITTI(filename):
-    depth = cv2.imread(filename, cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
-    f = 725.0087
-    baseline = 0.532725
-    disp = f * baseline * 100 / depth
-    # magic value = f * baseline * 100 / 65535 = 0.589
-    valid = disp > 0.59
     return disp, valid
 
-    
-# Method taken from /n/fs/raft-depth/RAFT-Stereo/datasets/SintelStereo/sdk/python/sintel_io.py
-def readDispSintelStereo(file_name):
-    a = np.array(Image.open(file_name))
-    d_r, d_g, d_b = np.split(a, axis=2, indices_or_sections=3)
-    disp = (d_r * 4 + d_g / (2 ** 6) + d_b / (2 ** 14))[..., 0]
-    # mask = np.array(Image.open(file_name.replace('disparities', 'occlusions')))
-    # valid = ((mask == 0) & (disp > 0))
-    valid = disp > 0
+def readDispBooster(file_name, nonocc=False):
+    disp = readPFM(file_name).astype(np.float32)
+    assert len(disp.shape) == 2
+    valid = (disp > 0.0) & (disp < 1e3)
     return disp, valid
-
-
-# Method taken from https://research.nvidia.com/sites/default/files/pubs/2018-06_Falling-Things/readme_0.txt
-def readDispFallingThings(file_name):
-    a = np.array(Image.open(file_name))
-    with open('/'.join(file_name.split('/')[:-1] + ['_camera_settings.json']), 'r') as f:
-        intrinsics = json.load(f)
-    fx = intrinsics['camera_settings'][0]['intrinsic_settings']['fx']
-    disp = (fx * 6.0 * 100) / a.astype(np.float32)
-    valid = disp > 0
-    return disp, valid
-
-    
-# Method taken from https://github.com/castacks/tartanair_tools/blob/master/data_type.md
-def readDispTartanAir(file_name):
-    depth = np.load(file_name)
-    disp = 80.0 / depth
-    valid = disp > 0
-    return disp, valid
-
-
-def readDispBooster(file_name):
-    disp = np.load(file_name)
-    valid = disp > 0
-    return disp, valid
-
-
-def readDispCREStereo(file_name):
-    disp = np.asarray(Image.open(file_name), dtype=np.float32)
-    disp = disp / 32.0
-    valid = disp > 0
-    return disp, valid
-
 
 def readDispInStereo2K(file_name):
-    disp = np.asarray(Image.open(file_name), dtype=np.float32)
-    disp = disp / 100.0
+    disp = cv2.imread(file_name, cv2.IMREAD_ANYDEPTH) / 100.0
+    valid = disp > 0
+    return disp, valid
+
+def readDispCREStereo(file_name):
+    disp = cv2.imread(file_name, cv2.IMREAD_ANYDEPTH) / 32.0
+    valid = disp > 0
+    return disp, valid
+
+def readDispFallingThings(file_name):
+    disp = cv2.imread(file_name, cv2.IMREAD_ANYDEPTH) / 256.0
     valid = disp > 0
     return disp, valid
 
@@ -201,12 +135,29 @@ def writeDispSpring(filename, disp):
     with h5py.File(filename, "w") as f:
         f.create_dataset("disparity", data=disp, compression="gzip", compression_opts=5)
 
-def readDispSpring(file_name):
+def readDispSpring(file_name, half_res=True):
     with h5py.File(file_name, "r") as f:
         disp = f["disparity"][()]
-    disp = disp[::2, ::2]
-    valid = disp > 0
+    if half_res:
+        disp = disp[::2, ::2]
+    disp = np.nan_to_num(disp, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
+    valid = (disp > 0.0) & (disp < 1e4)
     return disp, valid
+
+def readFlowSpring(file_name, half_res=True):
+    with h5py.File(file_name, "r") as f:
+        if "flow" not in f.keys():
+            raise IOError(f"File {file_name} does not have a 'flow' key.")
+        flow = f["flow"][()]
+    if half_res:
+        flow = flow[::2, ::2]
+    flow = np.nan_to_num(flow, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
+    valid = (np.abs(flow[..., 0]) < 1000) & (np.abs(flow[..., 1]) < 1000)
+    return flow, valid
+
+def writeFlowSpring(filename, flow):
+    with h5py.File(filename, "w") as f:
+        f.create_dataset("flow", data=flow, compression="gzip", compression_opts=5)
 
 def readDispTartanGround(file_name):
     depth_rgba = cv2.imread(file_name, cv2.IMREAD_UNCHANGED)
@@ -228,12 +179,18 @@ def readDispWMGStereo(file_name):
 
 def read_gen(file_name, pil=False):
     ext = splitext(file_name)[-1]
-    if ext == '.png' or ext == '.jpeg' or ext == '.ppm' or ext == '.jpg':
+    if ext in ['.png', '.jpeg', '.ppm', '.jpg']:
         return Image.open(file_name)
-    elif ext == '.bin' or ext == '.raw':
+    elif ext in ['.bin', '.raw']:
         return np.load(file_name)
     elif ext == '.flo':
         return readFlow(file_name).astype(np.float32)
+    elif ext == '.flo5':
+        flow, _ = readFlowSpring(file_name, half_res=True)
+        return flow
+    elif ext == '.dsp5':
+        disp, _ = readDispSpring(file_name, half_res=True)
+        return disp
     elif ext == '.pfm':
         flow = readPFM(file_name).astype(np.float32)
         if len(flow.shape) == 2:
@@ -242,10 +199,8 @@ def read_gen(file_name, pil=False):
             return flow[:, :, :-1]
     return []
 
-
 class InputPadder:
     """ Pads images such that dimensions are divisible by 8 """
-
     def __init__(self, dims, mode='sintel', divis_by=8):
         self.ht, self.wd = dims[-2:]
         pad_ht = (((self.ht // divis_by) + 1) * divis_by - self.ht) % divis_by
